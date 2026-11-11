@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="jp.papadenkilab.combookbridge"
+    android:versionCode="1"
+    android:versionName="1.0.0">
+
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34" />
+
+    <!-- Needed for the progress chip shown over Papotto during writes.
+         Without declaring this, the app never appears in the system's
+         "display over other apps" list and the permission cannot be granted. -->
+
+    <!-- Android 11+ package visibility: without this, getLaunchIntentForPackage returns null -->
+    <queries>
+        <package android:name="jp.firstascent.papaikuji" />
+        <package android:name="com.unifa_e.hiyoko.family" />
+    </queries>
+
+    <application
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="パパっとルクミー橋渡し"
+        android:allowBackup="false">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+
+        
+
+        <activity
+            android:name=".HowToUseActivity"
+            android:exported="false" />
+
+        <service
+            android:name=".BridgeService"
+            android:label="パパっとルクミー橋渡し"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_config" />
+        </service>
+    </application>
+</manifest>

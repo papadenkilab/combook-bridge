@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">パパっと育児の育児記録を読み取り、ルクミー連絡帳への転記を支援します。読み取った記録はこの端末内にのみ保存され、外部送信はしません。</string>
+</resources>
