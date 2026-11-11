@@ -3,6 +3,9 @@
 パパっと育児（jp.firstascent.papaikuji）のタイムラインを Android のアクセシビリティ機能で読み取り、
 ルクミー Family（com.unifa_e.hiyoko.family）の連絡帳フォームへ転記する橋渡しアプリです。逆方向（ルクミー → パパっと）の書き込みにも対応します。
 
+## ダウンロード
+最新の APK は [Releases](https://github.com/papadenkilab/combook-bridge/releases) から取得できます（`combook-bridge-v1.0.0.apk`）。Playストア外からのインストールになるため、初回は下記の「制限付き設定」の許可が必要です。動作環境：Android 8.0 以降。
+
 ## できること
 - 前日18:00以降のパパっと記録（食事・睡眠・排便・ミルク/授乳・体温・投薬の有無）を集計し、ルクミー連絡帳の下書きを作成
 - ルクミーのフォームを自動入力し、送信確認の手前で停止（送信は必ず利用者が最終確認して行う）
