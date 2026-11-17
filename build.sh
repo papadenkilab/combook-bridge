@@ -7,9 +7,17 @@ SDK="${ANDROID_SDK:-$HOME/android-sdk}"
 PLATFORM="$SDK/platforms/android-34/android.jar"
 BT="$SDK/build-tools/34.0.0"
 OUT="build"
-VERSION="v1.0.0"
+VERSION="v1.1.0"
 rm -rf "$OUT"
 mkdir -p "$OUT/classes" "$OUT/dex"
+
+echo "[0/6] decode text assets"
+GEN="$PWD/$OUT/gen"
+if [ -d textassets ]; then
+  (cd textassets && find . -name '*.b64' -print0 | while IFS= read -r -d '' f; do
+    rel="${f#./}"; out="$GEN/${rel%.b64}"; mkdir -p "$(dirname "$out")"; base64 -d "$f" > "$out"
+  done)
+fi
 
 echo "[1/6] javac"
 javac -encoding UTF-8 -source 8 -target 8 -nowarn -cp "$PLATFORM" -d "$OUT/classes" \
@@ -19,7 +27,7 @@ echo "[2/6] d8"
 "$BT/d8" --lib "$PLATFORM" --output "$OUT/dex" $(find "$OUT/classes" -name '*.class')
 
 echo "[3/6] aapt package"
-"$BT/aapt" package -f -M AndroidManifest.xml -S res -I "$PLATFORM" -F "$OUT/unsigned.apk"
+"$BT/aapt" package -f --auto-add-overlay -M AndroidManifest.xml -S res -S "$GEN/res" -I "$PLATFORM" -F "$OUT/unsigned.apk"
 
 echo "[4/6] add dex"
 cd "$OUT"

@@ -11,6 +11,8 @@ public class Store {
     public static final String KEY_WHEN = "when";
     public static final String KEY_DATA = "data";
     public static final String KEY_FILL = "pending_fill";
+    public static final String KEY_DRAFT_SAVE = "draft_save_after_fill";
+    public static final String KEY_DRAFT_SAVE_ON_FAIL = "draft_save_on_fail";
     public static final String KEY_LOG = "fill_log";
     public static final String KEY_SPEED = "speed_level";
     public static final String KEY_SCAN_OK = "scan_ok";
@@ -71,6 +73,22 @@ public class Store {
 
     public static boolean isFillPending(Context c) {
         return prefs(c).getBoolean(KEY_FILL, false);
+    }
+
+    public static void setDraftSaveAfterFill(Context c, boolean v) {
+        prefs(c).edit().putBoolean(KEY_DRAFT_SAVE, v).apply();
+    }
+
+    public static boolean isDraftSaveAfterFill(Context c) {
+        return prefs(c).getBoolean(KEY_DRAFT_SAVE, false);
+    }
+
+    public static void setDraftSaveOnFail(Context c, boolean v) {
+        prefs(c).edit().putBoolean(KEY_DRAFT_SAVE_ON_FAIL, v).apply();
+    }
+
+    public static boolean isDraftSaveOnFail(Context c) {
+        return prefs(c).getBoolean(KEY_DRAFT_SAVE_ON_FAIL, false);
     }
 
     public static void saveLog(Context c, String log) {

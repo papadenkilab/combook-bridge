@@ -66,7 +66,7 @@ private Button btnA11yWarn;
         root.addView(title);
 
         TextView ver = new TextView(this);
-        ver.setText("v1.0.0 ・ 送信は必ず手動です（自動入力は送信確認の手前で止まります）");
+        ver.setText("v1.1.0 ・ 送信は必ず手動です（自動入力は送信確認の手前で止まります）");
         ver.setTextSize(13);
         ver.setTextColor(0xFF777777);
         ver.setPadding(0, dp(4), 0, dp(16));

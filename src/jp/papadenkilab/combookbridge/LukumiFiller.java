@@ -53,6 +53,11 @@ public class LukumiFiller {
     private final Handler h = new Handler(Looper.getMainLooper());
     private final StringBuilder log = new StringBuilder();
     private boolean running = false;
+    private boolean draftSaveAttempted = false;
+    private boolean inDraftSave = false;
+    private int draftSavePhase = 0;
+    private int draftSaveTicks = 0;
+    private boolean draftSaved = false;
     private long emptyRootsSince = 0;
 
     private static class Op {
@@ -136,6 +141,11 @@ private String dateWantDate = "";
         skipCount = 0;
         failNames.clear();
         abortedFlag = false;
+        draftSaveAttempted = false;
+        inDraftSave = false;
+        draftSaved = false;
+        draftSavePhase = 0;
+        draftSaveTicks = 0;
         if (!d.temperature.isEmpty()) ops.add(new Op("体温", K_TEMP));
         ops.add(new Op("便", K_STOOL));
         if (!d.sleepStart.isEmpty() && !d.sleepEnd.isEmpty()) ops.add(new Op("睡眠", K_SLEEP));
@@ -437,6 +447,7 @@ return;
             }
             return;
         }
+        if (inDraftSave) { stepDraftSave(form, dlg); return; }
         if (op == null) { finish(); return; }
         // stage 0 of every op: make sure no leftover dialog is open
         if (stage == 0 && dlg != null) {
@@ -560,6 +571,48 @@ if (retryCount < 2) failedOps.add(op);
         return true;
     }
 
+    /** Optional post-fill step (settings options): tap Lukumi's own draft-save
+     *  button (btnDraft) so the filled form is parked as a draft inside Lukumi
+     *  instead of being left open. Runs after a non-aborted fill when every
+     *  item succeeded, or also with failures when the second option is on.
+     *  The submit button is never touched. */
+    private void stepDraftSave(AccessibilityNodeInfo form, AccessibilityNodeInfo dlg) {
+        draftSaveTicks++;
+        if (abortedFlag) { inDraftSave = false; finish(); return; }
+        if (draftSavePhase == 1) {
+            if (dlg != null) { // an unexpected dialog appeared: never touch it
+                log("下書き保存: ダイアログが出ているため中止します");
+                inDraftSave = false; finish(); return;
+            }
+            AccessibilityNodeInfo btn = form != null ? findByIdSuffix(form, "btnDraft") : null;
+            if (btn != null) {
+                click(btn);
+                log("下書き保存ボタンをタップ");
+                draftSavePhase = 2;
+                draftSaveTicks = 0;
+                return;
+            }
+            if (form != null) scrollForm(form);
+            if (draftSaveTicks > 40) {
+                log("下書き保存ボタンが見つかりませんでした");
+                inDraftSave = false; finish();
+            }
+            return;
+        }
+        // phase 2: success = the form closes (both form buttons gone)
+        boolean formGone = form == null
+                || (findByIdSuffix(form, "btnDraft") == null && findByIdSuffix(form, "btnSubmit") == null);
+        if (formGone) {
+            draftSaved = true;
+            log("ルクミーに下書き保存しました");
+            inDraftSave = false; finish(); return;
+        }
+        if (draftSaveTicks > 40) {
+            log("下書き保存を確認できませんでした（フォームが開いたままです）");
+            inDraftSave = false; finish();
+        }
+    }
+
     private void finish() {
 hideConfirmOverlay();
 if (retryCount < 2 && !abortedFlag && !failedOps.isEmpty()) {
@@ -574,6 +627,16 @@ op = null;
 nextOp();
 return;
 }
+        if (!draftSaveAttempted && !abortedFlag
+                && (failNames.isEmpty() || Store.isDraftSaveOnFail(svc))
+                && Store.isDraftSaveAfterFill(svc)) {
+            draftSaveAttempted = true;
+            inDraftSave = true;
+            draftSavePhase = 1;
+            draftSaveTicks = 0;
+            log("\u30aa\u30d7\u30b7\u30e7\u30f3: \u30eb\u30af\u30df\u30fc\u306b\u4e0b\u66f8\u304d\u4fdd\u5b58\u3057\u307e\u3059");
+            return;
+        }
         running = false;
         // safety: close any dialog we may have left open
         try {
@@ -588,7 +651,7 @@ log("\u6240\u8981\u6642\u9593: " + Store.fmtDuration(System.currentTimeMillis() 
             if (failNames.isEmpty()) {
                 Store.saveFillResult(svc, true, (skipCount > 0
                         ? "成功" + okCount + "・スキップ" + skipCount
-                        : "\u5168" + totalOps + "\u9805\u76ee\u6210\u529f") + elapsedSuffix());
+                        : "\u5168" + totalOps + "\u9805\u76ee\u6210\u529f") + (draftSaved ? "\u30fb\u4e0b\u66f8\u304d\u4fdd\u5b58\u6e08\u307f" : "") + elapsedSuffix());
             } else {
                 StringBuilder fs = new StringBuilder("\u5931\u6557\uff1a");
                 for (int i = 0; i < failNames.size(); i++) {
@@ -598,7 +661,7 @@ log("\u6240\u8981\u6642\u9593: " + Store.fmtDuration(System.currentTimeMillis() 
                 fs.append("\uff08\u6210\u529f ").append(okCount).append("/").append(totalOps);
                 if (skipCount > 0) fs.append("・スキップ").append(skipCount);
                 fs.append("\uff09");
-                Store.saveFillResult(svc, false, fs.toString() + elapsedSuffix());
+                Store.saveFillResult(svc, false, fs.toString() + (draftSaved ? "\u30fb\u4e0b\u66f8\u304d\u4fdd\u5b58\u6e08\u307f" : "") + elapsedSuffix());
             }
         }
         showOverlay("\u2705 \u81ea\u52d5\u5165\u529b\u304c\u7d42\u308f\u308a\u307e\u3057\u305f\uff08\u9001\u4fe1\u306f\u3057\u3066\u3044\u307e\u305b\u3093\uff09");

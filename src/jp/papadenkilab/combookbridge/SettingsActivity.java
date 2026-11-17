@@ -117,6 +117,33 @@ Store.setRequired(SettingsActivity.this, fi, isChecked);
 root.addView(cb);
 }
 
+// ---- Lukumi draft-save options ----
+TextView dsLabel = new TextView(this);
+dsLabel.setText("ルクミーへの書き込み");
+dsLabel.setTextSize(15);
+dsLabel.setPadding(0, dp(20), 0, dp(6));
+root.addView(dsLabel);
+CheckBox cbDraft = new CheckBox(this);
+cbDraft.setText("書き込み完了後にルクミーで下書き保存する（全項目が成功したときだけ）");
+cbDraft.setTextSize(15);
+cbDraft.setChecked(Store.isDraftSaveAfterFill(this));
+cbDraft.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+public void onCheckedChanged(CompoundButton b, boolean isChecked) {
+Store.setDraftSaveAfterFill(SettingsActivity.this, isChecked);
+}
+});
+root.addView(cbDraft);
+CheckBox cbDraftFail = new CheckBox(this);
+cbDraftFail.setText("失敗項目があるときも下書き保存する");
+cbDraftFail.setTextSize(15);
+cbDraftFail.setChecked(Store.isDraftSaveOnFail(this));
+cbDraftFail.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+public void onCheckedChanged(CompoundButton b, boolean isChecked) {
+Store.setDraftSaveOnFail(SettingsActivity.this, isChecked);
+}
+});
+root.addView(cbDraftFail);
+
 // ---- detailed log ----
 TextView logLabel = new TextView(this);
 logLabel.setText("詳細ログ（直近の読み取り結果と転記ログ）");
