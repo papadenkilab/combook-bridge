@@ -52,6 +52,8 @@ private Button btnA11ySettings;
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         den = getResources().getDisplayMetrics().density;
+        android.app.ActionBar ab = getActionBar();
+        if (ab != null) ab.hide();
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -64,7 +66,6 @@ private Button btnA11ySettings;
         ver.setTextSize(13);
         ver.setTextColor(0xFF777777);
         ver.setPadding(0, dp(4), 0, dp(16));
-        root.addView(ver);
 
 // ---- accessibility-off banner (steers the user to the settings page) ----
 btnA11yWarn = new Button(this);
@@ -181,6 +182,11 @@ btnA11ySettings.setLayoutParams(aLp);
         // Accessibility settings shortcut lives at the very bottom of
         // the page (user request): the top of the page stays compact.
         root.addView(btnA11ySettings);
+
+        LinearLayout.LayoutParams vLp = new LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        vLp.setMargins(0, dp(14), 0, 0);
+        root.addView(ver, vLp);
 
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
         scroll.setBackgroundColor(0xFFF7F5F0);
