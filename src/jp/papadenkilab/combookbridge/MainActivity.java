@@ -45,6 +45,8 @@ public class MainActivity extends Activity {
     private Button btnSchool;
     private Button btnWrite;
 private Button btnA11yWarn;
+private Button btnA11ySettings;
+private TextView tvA11yNote;
     private float den;
 
     @Override
@@ -66,7 +68,7 @@ private Button btnA11yWarn;
         root.addView(title);
 
         TextView ver = new TextView(this);
-        ver.setText("v1.1.0 ・ 送信は必ず手動です（自動入力は送信確認の手前で止まります）");
+        ver.setText("v1.2.0 ・ 送信は必ず手動です（自動入力は送信確認の手前で止まります）");
         ver.setTextSize(13);
         ver.setTextColor(0xFF777777);
         ver.setPadding(0, dp(4), 0, dp(16));
@@ -92,6 +94,36 @@ wLp.setMargins(0, 0, 0, dp(14));
 btnA11yWarn.setLayoutParams(wLp);
 btnA11yWarn.setVisibility(View.GONE);
 root.addView(btnA11yWarn);
+
+// PayPay and some other payment apps refuse to run while ANY accessibility
+// service is on (PayPay named this app and demanded it be turned
+// off). An app cannot toggle its own service, so give the user a one-tap
+// path to the system accessibility settings, plus a note while it is ON.
+tvA11yNote = new TextView(this);
+tvA11yNote.setText("\u30e6\u30fc\u30b6\u30fc\u88dc\u52a9\u304cON\u306e\u9593\u3001PayPay\u306a\u3069\u4e00\u90e8\u306e\u6c7a\u6e08\u30a2\u30d7\u30ea\u306f\u4f7f\u3048\u307e\u305b\u3093\u3002\u4f7f\u3046\u3068\u304d\u306f\u4e0b\u306e\u30dc\u30bf\u30f3\u304b\u3089OFF\u306b\u3057\u3001\u8ee2\u8a18\u306e\u524d\u306bON\u3078\u623b\u3057\u3066\u304f\u3060\u3055\u3044");
+tvA11yNote.setTextSize(13);
+tvA11yNote.setTextColor(0xFF616161);
+tvA11yNote.setVisibility(View.GONE);
+LinearLayout.LayoutParams nLp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+nLp.setMargins(0, 0, 0, dp(6));
+tvA11yNote.setLayoutParams(nLp);
+root.addView(tvA11yNote);
+btnA11ySettings = new Button(this);
+btnA11ySettings.setText("\u30e6\u30fc\u30b6\u30fc\u88dc\u52a9\u306e\u8a2d\u5b9a\u3092\u958b\u304f\uff08ON/OFF\u5207\u66ff\uff09");
+btnA11ySettings.setTextSize(14);
+btnA11ySettings.setAllCaps(false);
+btnA11ySettings.setTextColor(0xFF263238);
+GradientDrawable setBg = new GradientDrawable();
+setBg.setColor(0xFFECEFF1);
+setBg.setCornerRadius(dp(12));
+btnA11ySettings.setBackground(setBg);
+btnA11ySettings.setOnClickListener(new View.OnClickListener() {
+public void onClick(View v) { startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+});
+LinearLayout.LayoutParams aLp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48));
+aLp.setMargins(0, 0, 0, dp(14));
+btnA11ySettings.setLayoutParams(aLp);
+root.addView(btnA11ySettings);
 
         // ---- concise status card ----
         statusView = new TextView(this);
@@ -260,6 +292,7 @@ root.addView(btnA11yWarn);
         if (statusView == null) return;
         Store.clearStale(this);
 if (btnA11yWarn != null) btnA11yWarn.setVisibility(A11y.isEnabled(this) ? View.GONE : View.VISIBLE);
+if (tvA11yNote != null) tvA11yNote.setVisibility(A11y.isEnabled(this) ? View.VISIBLE : View.GONE);
         android.content.SharedPreferences p = Store.prefs(this);
         SpannableStringBuilder sb = new SpannableStringBuilder();
 
@@ -393,7 +426,8 @@ if (!requireA11y()) return;
             Store.setSchoolPending(this, false);
             return;
         }
-        Toast.makeText(this, "ルクミーで連絡帳（園・施設から）を開き、対象の日付を表示してください", Toast.LENGTH_LONG).show();
+        // No guidance toast here (user: it lingered over the
+        // report screen). Tab switching is automatic now.
     }
 
 
@@ -415,12 +449,54 @@ if (!requireA11y()) return;
                 .setMessage((d.dateLabel.isEmpty() ? d.dateIso : d.dateLabel) + " はすでにパパっとへ書き込み済みです。もう一度書き込むと記録が重複します。続けますか？")
                 .setNegativeButton("やめる", null)
                 .setPositiveButton("続ける", new android.content.DialogInterface.OnClickListener() {
-                    public void onClick(android.content.DialogInterface dlg, int which) { launchWrite(); }
+                    public void onClick(android.content.DialogInterface dlg, int which) { askTimesThenWrite(d, false, false); }
                 })
                 .show();
             return;
         }
+        askTimesThenWrite(d, false, false);
+    }
+
+    /**
+     * 打刻漏れ (a missing timeline stamp) leaves 登園/降園 empty. Instead
+     * of silently writing the fixed 08:00 / 18:00, ask the user for the
+     * actual time (user rule). Cancelling a picker keeps the
+     * fixed fallback for that one time and moves on.
+     */
+    private void askTimesThenWrite(final SchoolDraft d, boolean toenDone, boolean koenDone) {
+        if (!toenDone && d.toenTime.isEmpty()) { askOneTime(d, true, koenDone); return; }
+        if (!koenDone && d.koenTime.isEmpty()) { askOneTime(d, false, true); return; }
         launchWrite();
+    }
+
+    private void askOneTime(final SchoolDraft d, final boolean toen, final boolean koenDone) {
+        final boolean[] picked = {false};
+        final String fixed = Store.getFixedTime(this,
+                toen ? Store.KEY_FIXED_TOEN : Store.KEY_FIXED_KOEN, toen ? "08:00" : "18:00");
+        String[] hp = fixed.split(":");
+        int initH = 8, initM = 0;
+        try { initH = Integer.parseInt(hp[0]); initM = Integer.parseInt(hp[1]); } catch (Exception ignored) { }
+        android.app.TimePickerDialog dlg = new android.app.TimePickerDialog(this,
+            new android.app.TimePickerDialog.OnTimeSetListener() {
+                public void onTimeSet(android.widget.TimePicker view, int hour, int minute) {
+                    picked[0] = true;
+                    String t = String.format(java.util.Locale.JAPAN, "%02d:%02d", hour, minute);
+                    if (toen) d.toenTime = t; else d.koenTime = t;
+                    Store.saveSchoolData(MainActivity.this, d.toData());
+                    Store.saveSchoolDraftText(MainActivity.this, d.format());
+                    refreshStatus();
+                }
+            }, initH, initM, true);
+        dlg.setTitle((toen ? "登園" : "降園") + "時刻が見つかりませんでした");
+        dlg.setMessage("タイムラインに" + (toen ? "登園" : "降園") + "の打刻がありませんでした（打刻漏れ）。"
+                + (toen ? "登園" : "降園") + "時刻を入力してください。キャンセルすると固定時刻 "
+                + fixed + " で書き込みます。");
+        dlg.setOnDismissListener(new android.content.DialogInterface.OnDismissListener() {
+            public void onDismiss(android.content.DialogInterface dialog) {
+                askTimesThenWrite(d, true, koenDone);
+            }
+        });
+        dlg.show();
     }
 
 private void launchWrite() {

@@ -22,7 +22,8 @@ import java.util.regex.Pattern;
 /**
  * Writes a scanned nursery report (SchoolDraft) into Papotto as
  * individual records on the report's date:
- *   登園 8:00 / 降園 18:00 (fixed), meals at the nursery's fixed times
+ *   登園 / 降園 at the actual times read from Lukumi's timeline when
+ *   available (fixed 8:00 / 18:00 fallback), meals at the nursery's fixed times
  *   (朝おやつ 9:30 → おやつ, 昼 11:30 → ごはん・離乳食, おやつ 14:30 → おやつ,
  *   memos carry the completion ratings), sleeps as 寝る/起きる pairs,
  *   toilet → うんち, temperature/milk via the custom WheelView with a
@@ -124,9 +125,11 @@ public class PapottoWriter {
 
     // ---------------- ops ----------------
 
-    static List<WOp> buildOps(SchoolDraft d) {
+    /** ft = Store.fixedTimes(): [登園, 朝おやつ, ごはん, おやつ, 降園]. */
+    static List<WOp> buildOps(SchoolDraft d, String[] ft) {
         List<WOp> ops = new ArrayList<WOp>();
-        WOp toen = new WOp(); toen.kind = K_TOEN; toen.typeName = "登園"; toen.time = "08:00"; toen.label = "登園";
+        WOp toen = new WOp(); toen.kind = K_TOEN; toen.typeName = "登園";
+        toen.time = d.toenTime.isEmpty() ? ft[0] : d.toenTime; toen.label = "登園";
         ops.add(toen);
         List<int[]> sleepSpans = new ArrayList<int[]>();
         for (String s : d.sleeps) {
@@ -147,16 +150,16 @@ public class PapottoWriter {
             if (eq < 0) continue;
             String cat = m.substring(0, eq), rating = m.substring(eq + 1);
             if (cat.equals("朝おやつ")) {
-                String t = adjustMealTime("09:30", sleepSpans);
+                String t = adjustMealTime(ft[1], sleepSpans);
                 WOp o = new WOp(); o.kind = K_SNACK; o.typeName = "おやつ"; o.time = t;
                 o.endTime = plusMin(t, 30); o.memo = rating; o.label = "朝おやつ"; ops.add(o);
                 morningSnackOp = o;
             } else if (cat.equals("おやつ") || cat.equals("午後おやつ") || cat.equals("夕方おやつ")) {
                 // The nursery's afternoon snack: the report's category is the
-                // plain "おやつ", at about 14:30 (spec). It used to
+                // plain "おやつ", at about 14:30 (user). It used to
                 // fall into the lunch bucket, so no snack record was written
                 // and its rating leaked into the lunch memo.
-                String t = adjustMealTime("14:30", sleepSpans);
+                String t = adjustMealTime(ft[3], sleepSpans);
                 WOp o = new WOp(); o.kind = K_SNACK; o.typeName = "おやつ"; o.time = t;
                 o.endTime = plusMin(t, 30); o.memo = rating; o.label = cat; ops.add(o);
                 afternoonSnackOp = o;
@@ -169,7 +172,7 @@ public class PapottoWriter {
         }
         if (!lunchParts.isEmpty()) {
             lunchMemo = lunchAllSame ? lunchFirst : joinList(lunchParts, "、");
-            String t = adjustMealTime("11:30", sleepSpans);
+            String t = adjustMealTime(ft[2], sleepSpans);
             WOp o = new WOp(); o.kind = K_MEAL; o.typeName = "ごはん"; o.time = t;
             o.endTime = plusMin(t, 30); o.memo = lunchMemo; o.label = "昼ごはん"; ops.add(o);
             lunchOp = o;
@@ -197,10 +200,11 @@ public class PapottoWriter {
             try { o.temp = Double.parseDouble(p[1]); } catch (Exception e) { continue; }
             o.label = "体温 " + p[0]; ops.add(o);
         }
-        WOp kon = new WOp(); kon.kind = K_KON; kon.typeName = "降園"; kon.time = "18:00"; kon.label = "降園";
+        WOp kon = new WOp(); kon.kind = K_KON; kon.typeName = "降園";
+        kon.time = d.koenTime.isEmpty() ? ft[4] : d.koenTime; kon.label = "降園";
         {
-            // Teacher comment + mood (as text) go in the 降園 memo (user rules,
-            // ). The diary record is no longer created.
+            // Teacher comment + mood (as text) go in the 降園 memo (user rules).
+            // The diary record is no longer created.
             StringBuilder sb = new StringBuilder();
             if (!d.comment.isEmpty()) sb.append(d.comment);
             if (!d.mood.isEmpty()) {
@@ -311,7 +315,7 @@ public class PapottoWriter {
             }
         }
         queue.clear();
-        queue.addAll(buildOps(draft));
+        queue.addAll(buildOps(draft, Store.fixedTimes(svc)));
         totalOps = queue.size();
         okCount = 0;
         failNames.clear();
@@ -839,7 +843,7 @@ public class PapottoWriter {
                 // Only the downward pass may end the section: a snapshot taken
                 // while scrolling up can span the section's lower boundary
                 // (target rows plus the next day's header), which used to end
-                // the scan after a single record (a verification run).
+                // the scan after a single record (verification run).
                 if (wasIn && !inTargetSection && prescanPhase == 1) sectionLeft = true;
             }
         }
@@ -950,7 +954,7 @@ public class PapottoWriter {
                 return;
             }
             if (!writtenOps.isEmpty() && !verifyPhase) {
-                // Post-save verification (user request, ): re-scan the
+                // Post-save verification (user request): re-scan the
                 // timeline and confirm every "written" record is really there
                 // before calling the run a success.
                 verifyPhase = true;
@@ -1288,7 +1292,7 @@ public class PapottoWriter {
                 if (!buildDWheels(wheels)) return; // failOp already called
                 // Drive order is smallest unit first (buildDWheels reverses the
                 // list): Papotto's picker CARRIES - wrapping the minute wheel
-                // 59->0 / 0->59 moves the hour by one (user report, ).
+                // 59->0 / 0->59 moves the hour by one (user report).
                 // Setting the minute first and the hour after it overwrites any
                 // carry drift; the same logic applies up the day/month columns.
                 dtDriveTicks = 0;
@@ -1345,7 +1349,7 @@ public class PapottoWriter {
                 if (allDone) { dtPhase = 5; dtAuditOk = 0; ticks = 0; }
                 break;
             }
-            case 5: { // audit BEFORE tapping Done (user request, ):
+            case 5: { // audit BEFORE tapping Done (user request):
                       // re-read every wheel; fix only the wheels that are off
                       // target (in practice the hour, after a minute carry)
                 if (ticks * loopMs > 6000 || dtTargets == null) { dtPhase = 3; ticks = 0; break; }

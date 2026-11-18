@@ -144,6 +144,38 @@ Store.setDraftSaveOnFail(SettingsActivity.this, isChecked);
 });
 root.addView(cbDraftFail);
 
+// ---- automatic tab switching (school scan) ----
+CheckBox cbAutoTab = new CheckBox(this);
+cbAutoTab.setText("画面の自動切替を使う（タイムライン⇔連絡帳・園/家庭）");
+cbAutoTab.setTextSize(15);
+cbAutoTab.setChecked(Store.isAutoTabSwitch(this));
+cbAutoTab.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+public void onCheckedChanged(CompoundButton b, boolean isChecked) {
+Store.setAutoTabSwitch(SettingsActivity.this, isChecked);
+}
+});
+root.addView(cbAutoTab);
+TextView atNote = new TextView(this);
+atNote.setText("OFFにすると、園の連絡帳の読み取りでタブを自動で切り替えません（手動で開いてください）。");
+atNote.setTextSize(13);
+root.addView(atNote);
+
+// ---- fixed times (reverse write) ----
+TextView ftLabel = new TextView(this);
+ftLabel.setText("固定時刻（園→パパっと書き込み）");
+ftLabel.setTextSize(15);
+ftLabel.setPadding(0, dp(20), 0, dp(6));
+root.addView(ftLabel);
+TextView ftNote = new TextView(this);
+ftNote.setText("登園・降園はタイムラインの打刻が取れた日はそちらが優先されます。固定時刻は、取れなかった日と食事に使います。タップで変更できます。");
+ftNote.setTextSize(13);
+root.addView(ftNote);
+root.addView(fixedTimeButton("登園", Store.KEY_FIXED_TOEN, "08:00"));
+root.addView(fixedTimeButton("朝おやつ", Store.KEY_FIXED_SNACK_AM, "09:30"));
+root.addView(fixedTimeButton("ごはん", Store.KEY_FIXED_LUNCH, "11:30"));
+root.addView(fixedTimeButton("おやつ", Store.KEY_FIXED_SNACK_PM, "14:30"));
+root.addView(fixedTimeButton("降園", Store.KEY_FIXED_KOEN, "18:00"));
+
 // ---- detailed log ----
 TextView logLabel = new TextView(this);
 logLabel.setText("詳細ログ（直近の読み取り結果と転記ログ）");
@@ -189,6 +221,30 @@ refresh();
 protected void onResume() {
 super.onResume();
 refresh();
+}
+
+private Button fixedTimeButton(final String label, final String key, final String def) {
+final Button b = new Button(this);
+b.setText(label + ": " + Store.getFixedTime(this, key, def));
+b.setTextSize(14);
+b.setAllCaps(false);
+b.setOnClickListener(new View.OnClickListener() {
+public void onClick(View v) {
+String cur = Store.getFixedTime(SettingsActivity.this, key, def);
+String[] hp = cur.split(":");
+int h = 8, m = 0;
+try { h = Integer.parseInt(hp[0]); m = Integer.parseInt(hp[1]); } catch (Exception ignored) { }
+new android.app.TimePickerDialog(SettingsActivity.this,
+new android.app.TimePickerDialog.OnTimeSetListener() {
+public void onTimeSet(android.widget.TimePicker view, int hour, int minute) {
+String t = String.format(java.util.Locale.JAPAN, "%02d:%02d", hour, minute);
+Store.setFixedTime(SettingsActivity.this, key, t);
+b.setText(label + ": " + t);
+}
+}, h, m, true).show();
+}
+});
+return b;
 }
 
 private int dp(int v) { return (int) (v * den);}

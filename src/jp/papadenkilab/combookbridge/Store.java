@@ -13,6 +13,12 @@ public class Store {
     public static final String KEY_FILL = "pending_fill";
     public static final String KEY_DRAFT_SAVE = "draft_save_after_fill";
     public static final String KEY_DRAFT_SAVE_ON_FAIL = "draft_save_on_fail";
+    public static final String KEY_AUTO_TAB_SWITCH = "auto_tab_switch";
+    public static final String KEY_FIXED_TOEN = "fixed_toen";
+    public static final String KEY_FIXED_SNACK_AM = "fixed_snack_am";
+    public static final String KEY_FIXED_LUNCH = "fixed_lunch";
+    public static final String KEY_FIXED_SNACK_PM = "fixed_snack_pm";
+    public static final String KEY_FIXED_KOEN = "fixed_koen";
     public static final String KEY_LOG = "fill_log";
     public static final String KEY_SPEED = "speed_level";
     public static final String KEY_SCAN_OK = "scan_ok";
@@ -83,12 +89,43 @@ public class Store {
         return prefs(c).getBoolean(KEY_DRAFT_SAVE, false);
     }
 
+    /** Automatic tab navigation during the school scan (default ON). */
+    public static boolean isAutoTabSwitch(Context c) {
+        return prefs(c).getBoolean(KEY_AUTO_TAB_SWITCH, true);
+    }
+
+    public static void setAutoTabSwitch(Context c, boolean v) {
+        prefs(c).edit().putBoolean(KEY_AUTO_TAB_SWITCH, v).apply();
+    }
+
     public static void setDraftSaveOnFail(Context c, boolean v) {
         prefs(c).edit().putBoolean(KEY_DRAFT_SAVE_ON_FAIL, v).apply();
     }
 
     public static boolean isDraftSaveOnFail(Context c) {
         return prefs(c).getBoolean(KEY_DRAFT_SAVE_ON_FAIL, false);
+    }
+
+    // ---- fixed times for the reverse (nursery -> Papotto) write ----
+    // Editable in Settings (user request). Defaults are the
+    // nursery's long-standing schedule.
+    public static String getFixedTime(Context c, String key, String def) {
+        return prefs(c).getString(key, def);
+    }
+
+    public static void setFixedTime(Context c, String key, String v) {
+        prefs(c).edit().putString(key, v).apply();
+    }
+
+    /** [登園, 朝おやつ, ごはん, おやつ, 降園] with defaults applied. */
+    public static String[] fixedTimes(Context c) {
+        return new String[]{
+            getFixedTime(c, KEY_FIXED_TOEN, "08:00"),
+            getFixedTime(c, KEY_FIXED_SNACK_AM, "09:30"),
+            getFixedTime(c, KEY_FIXED_LUNCH, "11:30"),
+            getFixedTime(c, KEY_FIXED_SNACK_PM, "14:30"),
+            getFixedTime(c, KEY_FIXED_KOEN, "18:00"),
+        };
     }
 
     public static void saveLog(Context c, String log) {
@@ -173,7 +210,7 @@ return (sec / 60) + "\u5206" + String.format(java.util.Locale.JAPAN, "%02d", sec
     }
 
 
-/** Stale-info cleanup (user rule, ): a read/write result - and
+/** Stale-info cleanup (user rule): a read/write result - and
  *  the draft that goes with it - is cleared once it is more than 6 hours
  *  old, per pipeline, so stale information is never shown or reused. */
 public static void clearStale(Context c) {

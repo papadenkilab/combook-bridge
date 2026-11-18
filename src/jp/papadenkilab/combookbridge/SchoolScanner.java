@@ -45,6 +45,21 @@ public class SchoolScanner {
     private String dateLabel = "";
     private String comment = "";
     private final Map<String, String[]> rows = new LinkedHashMap<String, String[]>();
+    // Timeline sightings: dateIso -> {toenTime, koenTime} (see TimelineParser).
+    private final Map<String, String[]> timeline = new LinkedHashMap<String, String[]>();
+    private boolean tlSeen = false;
+    private int tlScrollSteps = 0;
+    private int tlScrollIdle = 0;
+    private String tlLastVisibleSig = "";
+    private long tlLastScrollMs = 0;
+    private boolean tlPhaseDone = false;
+    private int tlPhaseTicks = 0;
+    private int tlLastTapTick = -100;
+    private int st0LastTapTick = -100;
+    private int tapTries = 0;
+    private int tapOks = 0;
+    private String tapLast = "";
+    private long subTapLastMs = 0;
 
     public SchoolScanner(BridgeService svc) { this.svc = svc; }
 
@@ -58,6 +73,20 @@ public class SchoolScanner {
         idle = 0;
         lastSig = "";
         rows.clear();
+        timeline.clear();
+        tlSeen = false;
+        tlScrollSteps = 0;
+        tlScrollIdle = 0;
+        tlLastVisibleSig = "";
+        tlLastScrollMs = 0;
+        tlPhaseDone = false;
+        tlPhaseTicks = 0;
+        tlLastTapTick = -100;
+        st0LastTapTick = -100;
+        tapTries = 0;
+        tapOks = 0;
+        tapLast = "";
+        subTapLastMs = 0;
         dateIso = "";
         dateLabel = "";
         comment = "";
@@ -79,10 +108,69 @@ public class SchoolScanner {
     }
 
     private void step() {
+        if (stage == 2) {
+            // Post-report timeline phase: Lukumi often resumes straight
+            // into the report (no timeline pass), so after collecting
+            // the report we switch to the timeline tab ourselves (user
+            // request: the "open the timeline" toast was hidden
+            // behind the "open the report" toast) and collect the day's
+            // stamps. Falls back to waiting for a manual switch.
+            AccessibilityNodeInfo lr = lukumiRoot();
+            if (lr != null) {
+                collectTimeline(lr);
+                scrollTimeline(lr, dateIso);
+                if (Store.isAutoTabSwitch(svc)
+                        && timelineIncompleteFor(dateIso) && !containsTimelineTitle(lr)
+                        && tlPhaseTicks - tlLastTapTick >= 8) {
+                    if (tapTimelineTab(lr)) tlLastTapTick = tlPhaseTicks;
+                }
+            }
+            String[] tt = timeline.get(dateIso);
+            boolean complete = tt != null && !tt[0].isEmpty() && !tt[1].isEmpty();
+            // One reminder toast halfway through the wait, in case the
+            // first one was missed. (The floating chip also showed this
+            // prompt until v0.15.3; the user asked for the bottom toast
+            // only.)
+            if (tlPhaseTicks == 48 && !complete) {
+                Toast.makeText(svc, "タイムラインを開いてください ・ 登園 "
+                        + (tt != null && !tt[0].isEmpty() ? "✓" : "―")
+                        + " / 降園 " + (tt != null && !tt[1].isEmpty() ? "✓" : "―"),
+                        Toast.LENGTH_LONG).show();
+            }
+            if (complete || ++tlPhaseTicks > 120) { finish(true, ""); }
+            return;
+        }
         AccessibilityNodeInfo root = rootWithDetails();
         if (stage == 0) {
             if (root == null) {
-                if (++waitTicks > 240) { finish(false, "園・施設からの画面が見つかりません"); }
+                // While waiting for the report screen, watch Lukumi's
+                // timeline (its home tab) for the day's 登園/降園 times.
+                AccessibilityNodeInfo lr = lukumiRoot();
+                if (lr != null) {
+                    tlSeen = true;
+                    if (collectTimeline(lr) > 0) waitTicks = 0;
+                    scrollTimeline(lr);
+                    // Once the newest day's stamps are read from the
+                    // timeline, switch to the 連絡帳 tab ourselves
+                    // (user request) so the user does not
+                    // have to navigate. An older target day's stamps,
+                    // if still missing, are fetched in stage 2.
+                    maybeTapSchoolTab(lr);
+                    String newest = TimelineParser.newestDate(timeline);
+                    boolean pairReady = newest != null && !timelineIncompleteFor(newest);
+                    // Fallback trigger: ~10s on the timeline without a
+                    // complete pair (e.g. the stamps' date-times did not
+                    // pair up) — switch anyway; stage 2 retries the
+                    // timeline after the report.
+                    if ((pairReady || waitTicks >= 40)
+                            && Store.isAutoTabSwitch(svc)
+                            && containsTimelineTitle(lr)
+                            && waitTicks - st0LastTapTick >= 8) {
+                        if (tapTab(lr, "連絡帳")) st0LastTapTick = waitTicks;
+                    }
+                }
+                int cap = tlSeen ? 480 : 240;
+                if (++waitTicks > cap) { finish(false, "園・施設からの画面が見つかりません"); }
                 return;
             }
             readHeader(root);
@@ -90,6 +178,8 @@ public class SchoolScanner {
             return;
         }
         if (root == null) {
+            AccessibilityNodeInfo lr = lukumiRoot();
+            if (lr != null) { collectTimeline(lr); maybeTapSchoolTab(lr); awayTicks = 0; return; }
             if (SchoolScanner.otherAppActive(svc, "com.unifa_e.hiyoko.family")) {
                 if (++awayTicks > 40) { finish(false, "別のアプリに切り替わったため中止しました"); return; }
             } else awayTicks = 0;
@@ -107,6 +197,16 @@ public class SchoolScanner {
         boolean moved = list.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD);
         steps++;
         if ((!moved && idle >= 1) || idle >= 3 || steps > 40) {
+            if (rows.size() > 0 && !tlPhaseDone && !dateIso.isEmpty() && timelineIncompleteFor(dateIso)) {
+                tlPhaseDone = true;
+                stage = 2;
+                tlPhaseTicks = 0;
+                tlScrollSteps = 0;
+                tlScrollIdle = 0;
+                tlLastTapTick = -100;
+                Toast.makeText(svc, "登園・降園の時刻を読み取るため、タイムラインへ切り替えます", Toast.LENGTH_LONG).show();
+                return;
+            }
             finish(rows.size() > 0, rows.size() > 0 ? "" : "項目が見つかりません");
         }
     }
@@ -252,6 +352,7 @@ public class SchoolScanner {
 
     private void stopCancelled() {
         running = false;
+        ProgressChip.hide(svc);
         Store.saveSchoolResult(svc, false, "中止しました");
         Toast.makeText(svc, "園の連絡帳の読み取りを中止しました", Toast.LENGTH_LONG).show();
         Intent i = new Intent(svc, MainActivity.class);
@@ -261,10 +362,16 @@ public class SchoolScanner {
 
     private void finish(boolean ok, String note) {
         running = false;
+        ProgressChip.hide(svc);
         Store.setSchoolPending(svc, false);
         String dur = Store.fmtDuration(System.currentTimeMillis() - startMs);
         if (ok) {
             SchoolDraft d = parse();
+            String[] tt = timeline.get(d.dateIso);
+            if (tt != null) {
+                if (!tt[0].isEmpty()) d.toenTime = tt[0];
+                if (!tt[1].isEmpty()) d.koenTime = tt[1];
+            }
             Store.saveSchoolData(svc, d.toData());
             Store.saveSchoolDraftText(svc, d.format());
             String label = dateLabel.isEmpty() ? "日付不明" : dateLabel;
@@ -277,6 +384,251 @@ public class SchoolScanner {
         Intent i = new Intent(svc, MainActivity.class);
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         svc.startActivity(i);
+    }
+
+    // ---------------- timeline (登園/降園 times) ----------------
+
+    /** A window root belonging to Lukumi, whatever screen it shows. */
+    private AccessibilityNodeInfo lukumiRoot() {
+        List<AccessibilityWindowInfo> wins = svc.getWindows();
+        if (wins != null) {
+            for (AccessibilityWindowInfo w : wins) {
+                AccessibilityNodeInfo r = w.getRoot();
+                if (r != null && r.getPackageName() != null
+                        && "com.unifa_e.hiyoko.family".equals(r.getPackageName().toString())) return r;
+            }
+        }
+        AccessibilityNodeInfo active = svc.getRootInActiveWindow();
+        if (active != null && active.getPackageName() != null
+                && "com.unifa_e.hiyoko.family".equals(active.getPackageName().toString())) return active;
+        return null;
+    }
+
+    /**
+     * Collect 登園/降園 sightings from a Lukumi screen (in practice the
+     * timeline tab). Returns how many map entries changed, so the caller
+     * can treat sightings as progress. A title counts only when its card
+     * subtree holds exactly one date-time; ambiguous cards are skipped
+     * rather than guessed.
+     */
+    private int collectTimeline(AccessibilityNodeInfo root) {
+        List<AccessibilityNodeInfo> nodes = new ArrayList<AccessibilityNodeInfo>();
+        gatherNodes(root, nodes);
+        int before = timelineHash();
+        for (AccessibilityNodeInfo n : nodes) {
+            // Titles may live in text or in contentDescription.
+            String[] cands = new String[2];
+            cands[0] = n.getText() == null ? "" : n.getText().toString();
+            cands[1] = n.getContentDescription() == null ? "" : n.getContentDescription().toString();
+            for (String title : cands) {
+                if (title.isEmpty()) continue;
+                boolean toen = TimelineParser.isToenTitle(title);
+                boolean koen = !toen && TimelineParser.isKoenTitle(title);
+                if (!toen && !koen) continue;
+                String[] dt = cardDateTime(n);
+                if (dt != null) TimelineParser.merge(timeline, dt[0], dt[1], toen);
+            }
+        }
+        return timelineHash() != before ? 1 : 0;
+    }
+
+    private int timelineHash() {
+        int h = 0;
+        for (Map.Entry<String, String[]> e : timeline.entrySet()) {
+            h = h * 31 + e.getKey().hashCode();
+            h = h * 31 + e.getValue()[0].hashCode();
+            h = h * 31 + e.getValue()[1].hashCode();
+        }
+        return h;
+    }
+
+    /** The single date-time in the title node's card, or null if not exactly one. */
+    private String[] cardDateTime(AccessibilityNodeInfo titleNode) {
+        AccessibilityNodeInfo anc = titleNode;
+        for (int level = 0; level < 4 && anc != null; level++) {
+            anc = anc.getParent();
+            if (anc == null) break;
+            List<String> texts = new ArrayList<String>();
+            gatherAllTexts(anc, texts);
+            String[] found = null;
+            boolean ambiguous = false;
+            for (String s : texts) {
+                String[] dt = TimelineParser.parseDateTime(s);
+                if (dt == null) continue;
+                if (found == null) found = dt;
+                else if (!found[0].equals(dt[0]) || !found[1].equals(dt[1])) ambiguous = true;
+            }
+            if (found != null) return ambiguous ? null : found;
+        }
+        return null;
+    }
+
+    /**
+     * Scroll the timeline a little so the target day's cards come into
+     * view — but stop early. The feed lazy-loads months of history, so
+     * "scroll until nothing changes" runs away (user report).
+     * Stop when: two days already have both times, the visible content
+     * stops changing (true bottom), 6 scrolls are used up, or the last
+     * scroll was less than 800ms ago (let lazy loading settle).
+     */
+    /** gatherTexts plus contentDescriptions (Lukumi labels often live there). */
+    private void gatherAllTexts(AccessibilityNodeInfo node, List<String> out) {
+        if (node == null) return;
+        CharSequence t = node.getText();
+        if (t != null) out.add(t.toString());
+        CharSequence cd = node.getContentDescription();
+        if (cd != null) out.add(cd.toString());
+        for (int i = 0; i < node.getChildCount(); i++) gatherAllTexts(node.getChild(i), out);
+    }
+
+    /** True when this root shows timeline cards (a 登園/降園 title). */
+    private boolean containsTimelineTitle(AccessibilityNodeInfo root) {
+        List<String> texts = new ArrayList<String>();
+        gatherAllTexts(root, texts);
+        for (String s : texts) {
+            if (TimelineParser.isToenTitle(s) || TimelineParser.isKoenTitle(s)) return true;
+        }
+        return false;
+    }
+
+    /** Tap Lukumi's bottom タイムライン tab (via its clickable ancestor). */
+    private boolean tapTimelineTab(AccessibilityNodeInfo root) {
+        return tapTab(root, "タイムライン");
+    }
+
+    /**
+     * Tap a Lukumi bottom-navigation tab by its label. Lukumi exposes
+     * many labels as contentDescription rather than text (the filler's
+     * findByDesc exists for this), so match both, prefer the bottom-most
+     * match, and tap its centre with a gesture first — the mechanism
+     * the filler/writer use for all their Lukumi taps. ACTION_CLICK on
+     * an ancestor is the fallback. (v0.15.6/7 searched text only and
+     * never found the tabs at all: user report, no switch.)
+     */
+    private boolean tapTab(AccessibilityNodeInfo root, String labelText) {
+        tapTries++;
+        AccessibilityNodeInfo label = findLabelNode(root, labelText);
+        if (label == null) { tapLast = labelText + ":なし"; return false; }
+        android.graphics.Rect r = new android.graphics.Rect();
+        label.getBoundsInScreen(r);
+        if (!r.isEmpty()) {
+            try {
+                android.graphics.Path p = new android.graphics.Path();
+                p.moveTo(r.centerX(), r.centerY());
+                p.lineTo(r.centerX(), r.centerY());
+                android.accessibilityservice.GestureDescription g =
+                        new android.accessibilityservice.GestureDescription.Builder()
+                                .addStroke(new android.accessibilityservice.GestureDescription.StrokeDescription(p, 0, 80))
+                                .build();
+                if (svc.dispatchGesture(g, null, null)) { tapOks++; tapLast = labelText + ":gesture"; return true; }
+            } catch (Exception ignored) { }
+        }
+        AccessibilityNodeInfo n = label;
+        for (int i = 0; i < 5 && n != null; i++) {
+            if (n.isClickable() && n.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
+                tapOks++; tapLast = labelText + ":click";
+                return true;
+            }
+            n = n.getParent();
+        }
+        tapLast = labelText + ":失敗";
+        return false;
+    }
+
+    /** Bottom-most node whose text OR contentDescription equals the label. */
+    private AccessibilityNodeInfo findLabelNode(AccessibilityNodeInfo root, String labelText) {
+        List<AccessibilityNodeInfo> nodes = new ArrayList<AccessibilityNodeInfo>();
+        gatherNodes(root, nodes);
+        AccessibilityNodeInfo best = null;
+        int bestTop = -1;
+        for (AccessibilityNodeInfo n : nodes) {
+            if (!labelText.equals(nodeTextOrDesc(n))) continue;
+            android.graphics.Rect r = new android.graphics.Rect();
+            n.getBoundsInScreen(r);
+            if (r.top > bestTop) { bestTop = r.top; best = n; }
+        }
+        return best;
+    }
+
+    private static String nodeTextOrDesc(AccessibilityNodeInfo n) {
+        CharSequence t = n.getText();
+        if (t != null && !t.toString().trim().isEmpty()) return t.toString().trim();
+        CharSequence cd = n.getContentDescription();
+        return cd == null ? "" : cd.toString().trim();
+    }
+
+    /**
+     * The 連絡帳 screen has two sub-tabs; the report lives under
+     * 園・施設から, but the tab often reopens on 家庭から (the fill
+     * flow leaves it there). While the report list is not visible,
+     * tap the 園・施設から sub-tab (user request).
+     */
+    private void maybeTapSchoolTab(AccessibilityNodeInfo lr) {
+        if (!Store.isAutoTabSwitch(svc)) return;
+        if (findByIdSuffix(lr, "rv_details") != null) return;
+        long now = System.currentTimeMillis();
+        if (now - subTapLastMs < 2000) return;
+        if (findLabelNode(lr, "園・施設から") == null) return;
+        if (tapTab(lr, "園・施設から")) subTapLastMs = now;
+    }
+
+    private boolean timelineIncompleteFor(String iso) {
+        String[] tt = timeline.get(iso);
+        return tt == null || tt[0].isEmpty() || tt[1].isEmpty();
+    }
+
+    private void scrollTimeline(AccessibilityNodeInfo root) {
+        scrollTimeline(root, null);
+    }
+
+    /** targetIso != null: stop once that date has both times. */
+    private void scrollTimeline(AccessibilityNodeInfo root, String targetIso) {
+        if (targetIso != null) {
+            if (!timelineIncompleteFor(targetIso)) return;
+            if (tlScrollSteps >= 6) return;
+        } else {
+            // No target date yet (waiting for the report): the newest
+            // day in the feed is the usual target. If its pair is
+            // already visible, do not scroll at all (user report,
+            // v0.15.1: scrolled even though today's stamps were on
+            // screen). Older target days are handled by the stage-2
+            // phase, which knows the date.
+            String newest = TimelineParser.newestDate(timeline);
+            if (newest != null && !timelineIncompleteFor(newest)) return;
+            if (tlScrollSteps >= 2) return;
+        }
+        long now = System.currentTimeMillis();
+        if (now - tlLastScrollMs < 800) return;
+        List<String> texts = new ArrayList<String>();
+        gatherTexts(root, texts);
+        String sig = Integer.toString(texts.hashCode());
+        if (sig.equals(tlLastVisibleSig)) {
+            if (++tlScrollIdle >= 2) return;
+        } else {
+            tlScrollIdle = 0;
+        }
+        tlLastVisibleSig = sig;
+        AccessibilityNodeInfo sc = findScrollable(root);
+        if (sc != null && sc.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+            tlScrollSteps++;
+            tlLastScrollMs = now;
+        }
+    }
+
+    private AccessibilityNodeInfo findScrollable(AccessibilityNodeInfo node) {
+        if (node == null) return null;
+        if (node.isScrollable()) return node;
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo r = findScrollable(node.getChild(i));
+            if (r != null) return r;
+        }
+        return null;
+    }
+
+    private void gatherNodes(AccessibilityNodeInfo node, List<AccessibilityNodeInfo> out) {
+        if (node == null) return;
+        out.add(node);
+        for (int i = 0; i < node.getChildCount(); i++) gatherNodes(node.getChild(i), out);
     }
 
     // ---------------- helpers ----------------

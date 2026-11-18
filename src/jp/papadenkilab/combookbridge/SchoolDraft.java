@@ -19,6 +19,11 @@ public class SchoolDraft {
     public final List<String> meals = new ArrayList<String>();        // "朝おやつ=完食"
     public String mealMemo = "";
     public String mood = "";
+    // Actual 登園/降園 times read from Lukumi's timeline ("08:07").
+    // Empty when the timeline did not show them; the writer then
+    // falls back to the fixed 08:00 / 18:00.
+    public String toenTime = "";
+    public String koenTime = "";
 
     public int itemCount() {
         return temperatures.size() + toilets.size() + sleeps.size() + milks.size()
@@ -38,6 +43,8 @@ public class SchoolDraft {
         sb.append("食事: ").append(meals.isEmpty() ? "(なし)" : join(meals, "、")).append("\n");
         sb.append("食事メモ: ").append(mealMemo.isEmpty() ? "(なし)" : mealMemo).append("\n");
         sb.append("機嫌: ").append(mood.isEmpty() ? "(なし)" : mood).append("\n");
+        sb.append("登園: ").append(toenTime.isEmpty() ? "(固定時刻)" : toenTime + "（タイムライン）").append("\n");
+        sb.append("降園: ").append(koenTime.isEmpty() ? "(固定時刻)" : koenTime + "（タイムライン）").append("\n");
         return sb.toString();
     }
 
@@ -63,6 +70,8 @@ public class SchoolDraft {
         sb.append('|').append(joinSan(sleeps));
         sb.append('|').append(joinSan(milks));
         sb.append('|').append(joinSan(meals));
+        sb.append('|').append(san(toenTime));
+        sb.append('|').append(san(koenTime));
         return sb.toString();
     }
 
@@ -84,6 +93,7 @@ public class SchoolDraft {
         addAll(d.sleeps, p[8]);
         addAll(d.milks, p[9]);
         addAll(d.meals, p[10]);
+        if (p.length > 12) { d.toenTime = p[11]; d.koenTime = p[12]; }
         return d;
     }
 

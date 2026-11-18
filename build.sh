@@ -7,7 +7,7 @@ SDK="${ANDROID_SDK:-$HOME/android-sdk}"
 PLATFORM="$SDK/platforms/android-34/android.jar"
 BT="$SDK/build-tools/34.0.0"
 OUT="build"
-VERSION="v1.1.0"
+VERSION="v1.2.0"
 rm -rf "$OUT"
 mkdir -p "$OUT/classes" "$OUT/dex"
 
