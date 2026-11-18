@@ -67,6 +67,12 @@ a11yHint.setPadding(0, dp(8), 0, 0);
 a11yHint.setText("オンにできないとき（Android 13以降）：「制限付き設定によって管理されています」と表示される場合は、端末の設定 → アプリ →「パパっとルクミー橋渡し」→ アプリ情報の右上「\u22ee」→「制限付き設定を許可」を押してから、もう一度上のボタンからオンにしてください。");
 root.addView(a11yHint);
 
+TextView payNote = new TextView(this);
+payNote.setTextSize(13);
+payNote.setPadding(0, dp(8), 0, 0);
+payNote.setText("ユーザー補助がONの間、PayPayなど一部の決済アプリは使えません。使うときはOFFにし、転記の前にONへ戻してください。");
+root.addView(payNote);
+
 // ---- speed ----
 TextView speedLabel = new TextView(this);
 speedLabel.setText("\u52d5\u4f5c\u30b9\u30d4\u30fc\u30c9\uff08\u30b9\u30af\u30ed\u30fc\u30eb\u30fb\u6570\u5024\u5909\u66f4\u306e\u9593\u9694\uff09\n\u901f\u3044\u307b\u3069\u51e6\u7406\u306f\u77ed\u304f\u306a\u308a\u307e\u3059\u3002\u5931\u6557\u3057\u305f\u9805\u76ee\u306f\u4e00\u6bb5\u9045\u3044\u901f\u5ea6\u3067\u81ea\u52d5\u3067\u3084\u308a\u76f4\u3057\u307e\u3059\u3002" + "\nこの設定はルクミー入力とパパっと書込の両方に効きます。");

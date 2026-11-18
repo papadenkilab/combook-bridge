@@ -46,7 +46,6 @@ public class MainActivity extends Activity {
     private Button btnWrite;
 private Button btnA11yWarn;
 private Button btnA11ySettings;
-private TextView tvA11yNote;
     private float den;
 
     @Override
@@ -59,13 +58,6 @@ private TextView tvA11yNote;
         int pad = dp(20);
         root.setPadding(pad, pad, pad, pad);
         root.setBackgroundColor(0xFFF7F5F0);
-
-        TextView title = new TextView(this);
-        title.setText("パパっと → ルクミー 橋渡し");
-        title.setTextSize(24);
-        title.setTypeface(Typeface.DEFAULT_BOLD);
-        title.setTextColor(0xFF333333);
-        root.addView(title);
 
         TextView ver = new TextView(this);
         ver.setText("v1.2.0 ・ 送信は必ず手動です（自動入力は送信確認の手前で止まります）");
@@ -95,19 +87,6 @@ btnA11yWarn.setLayoutParams(wLp);
 btnA11yWarn.setVisibility(View.GONE);
 root.addView(btnA11yWarn);
 
-// PayPay and some other payment apps refuse to run while ANY accessibility
-// service is on (PayPay named this app and demanded it be turned
-// off). An app cannot toggle its own service, so give the user a one-tap
-// path to the system accessibility settings, plus a note while it is ON.
-tvA11yNote = new TextView(this);
-tvA11yNote.setText("\u30e6\u30fc\u30b6\u30fc\u88dc\u52a9\u304cON\u306e\u9593\u3001PayPay\u306a\u3069\u4e00\u90e8\u306e\u6c7a\u6e08\u30a2\u30d7\u30ea\u306f\u4f7f\u3048\u307e\u305b\u3093\u3002\u4f7f\u3046\u3068\u304d\u306f\u4e0b\u306e\u30dc\u30bf\u30f3\u304b\u3089OFF\u306b\u3057\u3001\u8ee2\u8a18\u306e\u524d\u306bON\u3078\u623b\u3057\u3066\u304f\u3060\u3055\u3044");
-tvA11yNote.setTextSize(13);
-tvA11yNote.setTextColor(0xFF616161);
-tvA11yNote.setVisibility(View.GONE);
-LinearLayout.LayoutParams nLp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-nLp.setMargins(0, 0, 0, dp(6));
-tvA11yNote.setLayoutParams(nLp);
-root.addView(tvA11yNote);
 btnA11ySettings = new Button(this);
 btnA11ySettings.setText("\u30e6\u30fc\u30b6\u30fc\u88dc\u52a9\u306e\u8a2d\u5b9a\u3092\u958b\u304f\uff08ON/OFF\u5207\u66ff\uff09");
 btnA11ySettings.setTextSize(14);
@@ -121,9 +100,8 @@ btnA11ySettings.setOnClickListener(new View.OnClickListener() {
 public void onClick(View v) { startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
 });
 LinearLayout.LayoutParams aLp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48));
-aLp.setMargins(0, 0, 0, dp(14));
+aLp.setMargins(0, dp(14), 0, 0);
 btnA11ySettings.setLayoutParams(aLp);
-root.addView(btnA11ySettings);
 
         // ---- concise status card ----
         statusView = new TextView(this);
@@ -200,7 +178,16 @@ root.addView(btnA11ySettings);
         row.addView(btnSettingsPage, sLp);
         root.addView(row);
 
-        setContentView(root);
+        // Accessibility settings shortcut lives at the very bottom of
+        // the page (user request): the top of the page stays compact.
+        root.addView(btnA11ySettings);
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setBackgroundColor(0xFFF7F5F0);
+        scroll.addView(root, new android.view.ViewGroup.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+        setContentView(scroll);
         refreshStatus();
     }
 
@@ -292,7 +279,6 @@ root.addView(btnA11ySettings);
         if (statusView == null) return;
         Store.clearStale(this);
 if (btnA11yWarn != null) btnA11yWarn.setVisibility(A11y.isEnabled(this) ? View.GONE : View.VISIBLE);
-if (tvA11yNote != null) tvA11yNote.setVisibility(A11y.isEnabled(this) ? View.VISIBLE : View.GONE);
         android.content.SharedPreferences p = Store.prefs(this);
         SpannableStringBuilder sb = new SpannableStringBuilder();
 
